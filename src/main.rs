@@ -6,7 +6,7 @@ use nexusdb::storage::nffile::{flush_nffile, load_nffile, NFFile};
 // TODO: 把这个跑通
 // 修改NFFile的new函数，使其可以选择以file_path来初始化，file_path是可选参数
 // 研究下Rust的可选参数、默认参数
-// 安装questDB在shenyang_office上
+// 安装questDB在shenyang_office上  ------ questDB在 /opt/questdb-7.3.7
 // benchmark测试一下持久化的性能
 
 fn main() -> io::Result<()> {
