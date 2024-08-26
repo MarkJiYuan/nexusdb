@@ -22,10 +22,16 @@ pub struct NFFile {
 }
 
 impl NFFile {
-    pub fn new(start_ts: i64, interval: u32, data_length: u16) -> Self {
-        // 使用 UUID 生成唯一的文件路径
-        let file_name = Uuid::new_v4().to_string();
-        let file_path = PathBuf::from(format!("{}.bin", file_name));
+    pub fn new(start_ts: i64, interval: u32, data_length: u16, file_path: Option<PathBuf>) -> Self {
+
+        // 如果 file_path 是 None，生成一个默认的文件路径
+        let file_path = match file_path {
+            Some(path) => path,
+            None => {
+                let file_name = uuid::Uuid::new_v4().to_string();
+                PathBuf::from(format!("{}.bin", file_name))
+            }
+        };
         
         NFFile {
             header: Header {
@@ -144,6 +150,7 @@ pub fn flush_nffile(nf_file: &mut NFFile) -> io::Result<()> {
 }
 
 pub fn load_nffile(nf_file: &mut NFFile) -> io::Result<()> {
+
     let mut file = File::open(&nf_file.file_path)?;
 
     // Read the header
