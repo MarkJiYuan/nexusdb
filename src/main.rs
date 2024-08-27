@@ -1,8 +1,8 @@
+use nexusdb::storage::nffile::{flush_nffile, load_nffile, NFFile};
 use std::io;
 use std::mem;
 use std::path;
 use uuid::Uuid;
-use nexusdb::storage::nffile::{flush_nffile, load_nffile, NFFile};
 
 // TODO: 把这个跑通
 // 修改NFFile的new函数，使其可以选择以file_path来初始化，file_path是可选参数
@@ -14,6 +14,7 @@ fn main() -> io::Result<()> {
     // 创建 NFFile 实例，自动生成随机文件路径
     let file_name = Uuid::new_v4().to_string() + ".bin"; // 生成一个唯一的文件名
     let file_path = path::PathBuf::from(file_name);
+
     let mut nf_file = NFFile::new(0, 1000, 4, Some(file_path.clone()));
 
     // 添加数据

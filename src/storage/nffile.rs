@@ -1,9 +1,9 @@
-use std::option::Option;
-use std::vec::Vec;
-use std::mem;
 use std::fs::{File, OpenOptions};
-use std::io::{self, Read, Write, Seek, SeekFrom};
+use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::mem;
+use std::option::Option;
 use std::path::PathBuf;
+use std::vec::Vec;
 use uuid::Uuid;
 
 #[derive(Debug)]
@@ -23,7 +23,6 @@ pub struct NFFile {
 
 impl NFFile {
     pub fn new(start_ts: i64, interval: u32, data_length: u16, file_path: Option<PathBuf>) -> Self {
-
         // 如果 file_path 是 None，生成一个默认的文件路径
         let file_path = match file_path {
             Some(path) => path,
@@ -32,7 +31,7 @@ impl NFFile {
                 PathBuf::from(format!("{}.bin", file_name))
             }
         };
-        
+
         NFFile {
             header: Header {
                 start_ts,
@@ -135,7 +134,10 @@ impl NFFile {
 
 // Public functions to flush and load data
 pub fn flush_nffile(nf_file: &mut NFFile) -> io::Result<()> {
-    let mut file = OpenOptions::new().write(true).create(true).open(&nf_file.file_path)?;
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .open(&nf_file.file_path)?;
 
     // Write the header
     file.write_all(&nf_file.header.start_ts.to_le_bytes())?;
@@ -150,7 +152,6 @@ pub fn flush_nffile(nf_file: &mut NFFile) -> io::Result<()> {
 }
 
 pub fn load_nffile(nf_file: &mut NFFile) -> io::Result<()> {
-
     let mut file = File::open(&nf_file.file_path)?;
 
     // Read the header
