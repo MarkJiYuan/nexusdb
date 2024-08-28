@@ -230,6 +230,7 @@ name = "nexusdb"
 version = "0.1.0"
 dependencies = [
  "criterion",
+ "once_cell",
  "uuid",
 ]
 
