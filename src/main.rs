@@ -48,15 +48,20 @@ fn main() -> io::Result<()> {
     let file_path = path::PathBuf::from(file_name);
     let mut nf_file = NFFile::new(0, 1000, 4, Some(file_path.clone()));
 
+    nf_file.add_data(0, &41i32);
     nf_file.add_data(1000, &42i32);
+    nf_file.add_data(2000, &43i32);
+    flush_nffile(&mut nf_file)?;
 
     let tags: &str = "Region1.O.temperature";
+
     let mut manager = INDEX_MANAGER.lock().unwrap();
     manager.add_index_entry(tags.to_string(), file_name.to_string());
-    let indices = manager.get_all_indices();
-    println!("{:?}", indices);
+
     let header = manager.get_header_by_tag(tags);
     println!("{:?}", header);
+    let position = manager.get_position(tags, 100);
+    println!("{:?}", position);
 
     Ok(())
 }
