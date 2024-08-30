@@ -1,67 +1,53 @@
-use nexusdb::storage::nffile::{flush_nffile, load_nffile, NFFile};
+use nexusdb::storage::nffile::{NFFile, flush_nffile};
 use nexusdb::index_manager::index_manager::IndexManager;
-use std::io;
-use std::mem;
-use std::path;
-use uuid::Uuid;
-use std::sync::Mutex;
-use once_cell::sync::Lazy;
+use nexusdb::data_processing::workerpool::WorkerPool;
+use std::path::PathBuf;
 
-// TODO: 把这个跑通
-// 修改NFFile的new函数，使其可以选择以file_path来初始化，file_path是可选参数
-// 研究下Rust的可选参数、默认参数
-// 安装questDB在shenyang_office上  ------ questDB在 /opt/questdb-7.3.7
-// benchmark测试一下持久化的性能
-static INDEX_MANAGER: Lazy<Mutex<IndexManager>> = Lazy::new(|| Mutex::new(IndexManager::new()));
+// 测试现在的插入、查询速度，测试多核是不是真的能提速
+// 改index_manager，用rsqlite能持久化meta表内容，现在demo里，filename是写死的，改回自动生成的uuid模式
 
-fn main() -> io::Result<()> {
-    // // 创建 NFFile 实例，自动生成随机文件路径
-    // let file_name = Uuid::new_v4().to_string() + ".bin"; // 生成一个唯一的文件名
-    // let file_path = path::PathBuf::from(file_name);
+fn main() {
+    // 创建 IndexManager 并添加索引
+    let mut index_manager = IndexManager::new();
+    let tag = "temperature".to_string();
+    let file_name = "temp_data.bin".to_string();
+    
+    println!("Adding index entry with tag: {} and file_name: {}", tag, file_name);
+    index_manager.add_index_entry(tag.clone(), file_name.clone());
 
-    // let mut nf_file = NFFile::new(0, 1000, 4, Some(file_path.clone()));
+    // 创建文件并插入数据
+    let mut nf_file = NFFile::new(0, 1000, 4, Some(PathBuf::from(&file_name)));
+    let value: i32 = 42;
+    nf_file.add_data(1000, &value);
 
-    // // 添加数据
-    // nf_file.add_data(1000, &42i32);
+    // 刷新文件，将数据写入磁盘
+    flush_nffile(&mut nf_file).expect("Failed to flush data to file");
 
-    // // 查询数据
-    // if let Some(value) = nf_file.query_data::<i32>(1000) {
-    //     println!("Queried value from memory: {}", value);
-    // }
+    println!("Created file and inserted data successfully.");
+    // 创建线程池
+    let pool = WorkerPool::new(4);
 
-    // // 将数据刷新到磁盘并清空内存
-    // flush_nffile(&mut nf_file)?;
-    // mem::drop(nf_file);
+    // 模拟一个请求任务
+    pool.execute(move || {
+        // 查询 header 信息
+        if let Ok(header) = index_manager.get_header_by_tag("temperature") {
+            println!("Header: {:?}", header);
 
-    // let mut loaded_nf_file = NFFile::new(0, 1000, 4, Some(file_path));
+            // 创建 NFFile
+            let mut nf_file = NFFile::new(header.start_ts, header.interval, header.data_length, Some(PathBuf::from("temp_data.bin")));
 
-    // // 从磁盘加载数据
-    // load_nffile(&mut loaded_nf_file)?;
+            // 执行写入操作
+            let value: i32 = 4;
+            nf_file.add_data(1000, &value);
 
-    // // 再次查询数据
-    // if let Some(value) = loaded_nf_file.query_data::<i32>(1000) {
-    //     println!("Queried value from file: {}", value);
-    // }
+            // 查询写入的数据
+            let result: Option<&i32> = nf_file.query_data(1000);
+            println!("Queried data: {:?}", result);
+        } else {
+            println!("Tag not found.");
+        }
+    });
 
-    // let file_name = Uuid::new_v4().to_string() + ".bin"; // 生成一个唯一的文件名
-    let file_name = "1eecf02d-1685-49be-9f44-ffc17d899bb0.bin";
-    let file_path = path::PathBuf::from(file_name);
-    let mut nf_file = NFFile::new(0, 1000, 4, Some(file_path.clone()));
-
-    nf_file.add_data(0, &41i32);
-    nf_file.add_data(1000, &42i32);
-    nf_file.add_data(2000, &43i32);
-    flush_nffile(&mut nf_file)?;
-
-    let tags: &str = "Region1.O.temperature";
-
-    let mut manager = INDEX_MANAGER.lock().unwrap();
-    manager.add_index_entry(tags.to_string(), file_name.to_string());
-
-    let header = manager.get_header_by_tag(tags);
-    println!("{:?}", header);
-    let position = manager.get_position(tags, 100);
-    println!("{:?}", position);
-
-    Ok(())
+    // 主线程等待一段时间，确保所有任务完成
+    std::thread::sleep(std::time::Duration::from_secs(5));
 }

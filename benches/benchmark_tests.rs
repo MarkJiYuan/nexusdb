@@ -3,7 +3,7 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use nexusdb::storage::nffile::NFFile;
 
 fn criterion_benchmark(c: &mut Criterion) {
-    let mut nf_file = NFFile::new(0, 1000, 4);
+    let mut nf_file = NFFile::new(0, 1000, 4, None);
 
     c.bench_function("NFFile add_data", |b| {
         b.iter(|| {
