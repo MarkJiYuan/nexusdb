@@ -17,7 +17,7 @@ impl Worker {
         let thread = thread::spawn(move || loop {
             // 检查是否应该继续运行
             if !*running.lock().unwrap() {
-                println!("Worker {} shutting down.", id);
+                // println!("Worker {} shutting down.", id);
                 break;
             }
 
@@ -25,13 +25,13 @@ impl Worker {
             let task = receiver.lock().unwrap().recv_timeout(Duration::from_millis(100));
             match task {
                 Ok(task) => {
-                    println!("Worker {} got a task; executing.", id);
+                    // println!("Worker {} got a task; executing.", id);
                     task();
                 }
                 Err(_) => {
                     // recv_timeout 超时或通道关闭时触发
                     if !*running.lock().unwrap() {
-                        println!("Worker {} shutting down due to channel close.", id);
+                        // println!("Worker {} shutting down due to channel close.", id);
                         break;
                     }
                 }
@@ -92,7 +92,7 @@ impl Drop for WorkerPool {
         self.shutdown(); // 确保线程池被销毁时关闭所有 worker
 
         for worker in &mut self.workers {
-            println!("Shutting down worker {}", worker.id);
+            // println!("Shutting down worker {}", worker.id);
 
             if let Some(thread) = worker.thread.take() {
                 thread.join().unwrap();
