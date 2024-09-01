@@ -15,24 +15,28 @@ pub struct Worker {
 impl Worker {
     fn new(id: usize, receiver: Arc<Mutex<Receiver<Task>>>, running: Arc<Mutex<bool>>) -> Self {
         let thread = thread::spawn(move || loop {
-            // 检查是否应该继续运行
-            if !*running.lock().unwrap() {
-                // println!("Worker {} shutting down.", id);
-                break;
-            }
 
-            // 使用 recv_timeout 定期检查
-            let task = receiver.lock().unwrap().recv_timeout(Duration::from_millis(100));
-            match task {
-                Ok(task) => {
-                    // println!("Worker {} got a task; executing.", id);
-                    task();
+                // 检查是否应该继续运行
+                if !*running.lock().unwrap() {
+                    // println!("Worker {} shutting down.", id);
+                    break;
                 }
-                Err(_) => {
-                    // recv_timeout 超时或通道关闭时触发
-                    if !*running.lock().unwrap() {
-                        // println!("Worker {} shutting down due to channel close.", id);
-                        break;
+
+                // 使用 recv_timeout 定期检查
+                let task = receiver
+                    .lock()
+                    .unwrap()
+                    .recv_timeout(Duration::from_millis(100));
+                match task {
+                    Ok(task) => {
+                        // println!("Worker {} got a task; executing.", id);
+                        task();
+                    }
+                    Err(_) => {
+                        // recv_timeout 超时或通道关闭时触发
+                        if !*running.lock().unwrap() {
+                            // println!("Worker {} shutting down due to channel close.", id);
+                            break;
                     }
                 }
             }
@@ -66,7 +70,11 @@ impl WorkerPool {
             workers.push(Worker::new(id, Arc::clone(&receiver), Arc::clone(&running)));
         }
 
-        WorkerPool { workers, sender, running }
+        WorkerPool {
+            workers,
+            sender,
+            running,
+        }
     }
 
     pub fn execute<F>(&self, f: F)
@@ -84,6 +92,14 @@ impl WorkerPool {
 
         // 关闭发送端，这样接收端会收到一个错误（`Disconnected`），从而退出循环
         drop(&self.sender);
+    }
+
+    pub fn join(&mut self) {
+        for worker in &mut self.workers {
+            if let Some(thread) = worker.thread.take() {
+                thread.join().unwrap();
+            }
+        }
     }
 }
 

@@ -19,3 +19,6 @@ criterion = "0.3"
 [[bench]]
 name = "benchmark_tests"
 harness = false  # 确保使用 Criterion 的自定义测试驱动程序
+
+[profile.release]
+debug = true # 使用perf做cpu性能分析
