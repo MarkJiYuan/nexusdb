@@ -5,6 +5,14 @@ use std::path::PathBuf;
 use std::time::Instant;
 use std::time::SystemTime;
 
+// /opt/questdb-7.3.7
+// ./bin/questdb.sh start -d ./data -t questdb
+
+
+//iotdb启动：
+// bash sbin/start-server.sh
+// bash sbin/start-cli.sh -h 127.0.0.1 -p 6667 -u root -pw root
+
 // 测试现在的插入、查询速度，测试多核是不是真的能提速
 // 改index_manager，用rsqlite能持久化meta表内容，现在demo里，filename是写死的，改回自动生成的uuid模式
 
