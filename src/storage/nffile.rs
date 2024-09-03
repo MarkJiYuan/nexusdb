@@ -5,7 +5,6 @@ use std::option::Option;
 use std::path::PathBuf;
 use std::vec::Vec;
 
-
 #[derive(Debug)]
 pub struct Header {
     pub start_ts: i64,
@@ -18,7 +17,6 @@ pub struct NFFile {
     header: Header,
     data: Vec<u8>,
     pub file_path: PathBuf,
-    cursor: usize,
 }
 
 impl NFFile {
@@ -40,7 +38,6 @@ impl NFFile {
             },
             data: Vec::new(),
             file_path,
-            cursor: 0,
         }
     }
 
@@ -69,7 +66,6 @@ impl NFFile {
             let data_ptr = self.data.as_mut_ptr().add(position);
             std::ptr::copy(value_ptr, data_ptr, value_size);
         }
-        self.cursor = position + value_size;
     }
 
     pub fn query_data<T>(&self, query_timestamp: i64) -> Option<&T> {
@@ -105,7 +101,6 @@ impl NFFile {
             }
             current_position += value_size;
         }
-        self.cursor = current_position;
     }
 
     // 范围读：读取指定时间范围内的数据
@@ -139,6 +134,7 @@ pub fn flush_nffile(nf_file: &mut NFFile) -> io::Result<()> {
         .create(true)
         .open(&nf_file.file_path)?;
 
+    // 如何解决同时写的问题，可以只flush修改的那部分数据，不去修改别的部分
     // Write the header
     file.write_all(&nf_file.header.start_ts.to_le_bytes())?;
     file.write_all(&nf_file.header.interval.to_le_bytes())?;
@@ -180,10 +176,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_range_write_and_read_i32() {
-        let mut nf_file = NFFile::new(0, 1000, 4, None);
+    fn test_range_write_read_and_reload_i32() {
+        let file_path = "test_data.bin".to_string();
 
-        // 写入一组 i32 数据
+        // 创建 NFFile 实例并写入一组 i32 数据
+        let mut nf_file = NFFile::new(0, 1000, 4, Some(std::path::PathBuf::from(&file_path)));
         let values: [i32; 3] = [10, 20, 30];
         nf_file.range_write(1000, &values);
 
@@ -193,6 +190,24 @@ mod tests {
         assert_eq!(*result[0], 10);
         assert_eq!(*result[1], 20);
         assert_eq!(*result[2], 30);
+
+        // 将数据刷新到文件
+        let _ = flush_nffile(&mut nf_file);
+
+        // 创建一个新的 NFFile 实例，并从文件中加载数据
+        let mut loaded_nf_file =
+            NFFile::new(0, 1000, 4, Some(std::path::PathBuf::from(&file_path)));
+        let _ = load_nffile(&mut loaded_nf_file).expect("Failed to load data from file");
+
+        // 重新读取并验证加载的数据
+        let loaded_result: Vec<&i32> = loaded_nf_file.range_read(1000, 3);
+        assert_eq!(loaded_result.len(), 3);
+        assert_eq!(*loaded_result[0], 10);
+        assert_eq!(*loaded_result[1], 20);
+        assert_eq!(*loaded_result[2], 30);
+
+        // 清理测试文件
+        // std::fs::remove_file(&file_path).expect("Failed to remove test file");
     }
 
     #[test]

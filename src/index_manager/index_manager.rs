@@ -89,6 +89,11 @@ impl IndexManager {
         );
     }
 
+    // 获取索引条目
+    pub fn get_index_entry(&self, tag: &str) -> Option<&IndexEntry> {
+        self.indices.get(tag)
+    }
+
     pub fn get_header_by_tag(&self, tag: &str) -> io::Result<Header> {
         println!("Getting header for tag: {}", tag); // 添加调试打印
 
