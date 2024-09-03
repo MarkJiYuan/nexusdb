@@ -1,4 +1,5 @@
 use crate::storage::nffile::Header;
+use crate::utils::abs_path::get_absolute_path;
 use rusqlite::{params, Connection, Result};
 use std::collections::BTreeMap;
 use std::fs::File;
@@ -101,7 +102,7 @@ impl IndexManager {
             let uuid = &index_entry.uuid;
             let file_name = format!("{}.bin", uuid);
             println!("Found file name: {}", file_name); // 打印找到的文件名
-            let file_path = PathBuf::from(file_name);
+            let file_path = get_absolute_path(&file_name); // 获取文件路径
             self.read_header_from_file(&file_path)
         } else {
             println!("Tag not found: {}", tag); // 打印找不到 tag 的信息

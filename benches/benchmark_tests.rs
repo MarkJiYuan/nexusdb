@@ -2,13 +2,13 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use nexusdb::data_processing::workerpool::WorkerPool;
 use nexusdb::storage::nffile::{flush_nffile, NFFile};
-use std::path::PathBuf;
+use nexusdb::utils::abs_path::get_absolute_path_for_data_file;
 use std::sync::{Arc, Mutex};
 
 fn criterion_benchmark(c: &mut Criterion) {
     // let mut nf_file = NFFile::new(0, 1000, 4, None);
-    let file_name = "temp_data.bin".to_string();
-    let nf_file = Arc::new(Mutex::new(NFFile::new(0, 1000, 4, Some(PathBuf::from(&file_name)))));
+    let file_name = uuid::Uuid::new_v4();
+    let nf_file = Arc::new(Mutex::new(NFFile::new(0, 1000, 4, Some(get_absolute_path_for_data_file(&file_name.to_string())))));
 
     let pool = WorkerPool::new(13);
 

@@ -2,9 +2,9 @@ use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use nexusdb::storage::nffile::{NFFile, flush_nffile};
+use nexusdb::storage::nffile::{NFFile, flush_nffile, load_nffile};
 use nexusdb::index_manager::index_manager::IndexManager;
-use std::path::PathBuf;
+use nexusdb::utils::abs_path::get_absolute_path_for_data_file;
 use std::time::SystemTime;
 
 fn main() -> std::io::Result<()> {
@@ -36,7 +36,7 @@ fn initialize_database(index_manager: &Arc<Mutex<IndexManager>>, file_name: &str
     let tag = "temperature".to_string();
     index_manager.lock().unwrap().add_index_entry(tag.clone(), file_name.to_string(), SystemTime::now());
 
-    let mut nf_file = NFFile::new(0, 1000, 4, Some(PathBuf::from(file_name)));
+    let mut nf_file = NFFile::new(0, 1000, 4, Some(get_absolute_path_for_data_file(file_name)));
     let value: i32 = 42;
     nf_file.add_data(1000, &value);
     flush_nffile(&mut nf_file).expect("Failed to flush data to file");
@@ -116,9 +116,11 @@ fn insert_data(index_manager: &Arc<Mutex<IndexManager>>, tag: &str, timestamp: i
         }
     };
 
-    let mut nf_file = NFFile::new(0, 1000, 4, Some(PathBuf::from(file_name)));
-    nf_file.range_write(timestamp, &[&value]);
+    let mut nf_file = NFFile::new(0, 1000, 4, Some(get_absolute_path_for_data_file(file_name)));
+    let _ = load_nffile(&mut nf_file).expect("Failed to load data from file");
+    nf_file.add_data(timestamp, &value);
     flush_nffile(&mut nf_file).expect("Failed to flush data to file");
+    
 
     "Data inserted successfully".to_string()
 }
@@ -132,7 +134,14 @@ fn query_data(index_manager: &Arc<Mutex<IndexManager>>, tag: &str, timestamp: i6
         }
     };
 
-    let nf_file = NFFile::new(0, 1000, 4, Some(PathBuf::from(file_name)));
+    let current_dir = std::env::current_dir().expect("Failed to get current directory");
+    let file_path = current_dir.join("data").join(file_name);
+    println!("File path: {:?}", file_path);
+
+    let mut nf_file = NFFile::new(0, 1000, 4, Some(file_path));
+    let _ = load_nffile(&mut nf_file).expect("Failed to load data from file");
+
+    println!("Querying data for tag: {}, timestamp: {}", tag, timestamp);
     match nf_file.query_data::<i32>(timestamp) {
         Some(value) => format!("Data at {}: {}", timestamp, value),
         None => "Error: Data not found".to_string(),
