@@ -12,13 +12,14 @@ rayon = "1.6"
 crossbeam = "0.8"
 memmap2 = "0.5"
 rusqlite = "0.32.1"
+anyhow = "1"
+tempfile = "3"
+criterion = "0.3"
+rand = "*"
 
 [dev-dependencies]
-criterion = "0.3"
+
 
 [[bench]]
 name = "benchmark_tests"
 harness = false  # 确保使用 Criterion 的自定义测试驱动程序
-
-[profile.release]
-debug = true # 使用perf做cpu性能分析
