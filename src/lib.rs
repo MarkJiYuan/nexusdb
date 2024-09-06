@@ -214,41 +214,9 @@ impl Connection {
     }
 
     fn prepare_select<'a>(&self, select: Select<'a>) -> Result<'a, SelectStatement> {
-        if self.schema.borrow().is_none() {
-            self.load_schema()?;
-        }
-        let schema_cell = self.schema.borrow();
-        let schema = schema_cell.as_ref().unwrap();
-        let table_name = select.table_name.dequote();
-        let table = schema.get_table(&table_name).ok_or(anyhow::anyhow!(
-            "table not found: {:?}",
-            std::str::from_utf8(&table_name).unwrap_or_default()
-        ))?;
+        let tag = select.tag;
 
-        let mut columns = Vec::new();
-        for column in select.columns {
-            match column {
-                ResultColumn::All => {
-                    columns.extend(table.get_all_columns().map(Expression::Column));
-                }
-                ResultColumn::Expr((expr, _alias)) => {
-                    // TODO: consider alias.
-                    columns.push(Expression::from(expr, Some(table))?);
-                }
-                ResultColumn::AllOfTable(_table_name) => {
-                    todo!("ResultColumn::AllOfTable");
-                }
-            }
-        }
-
-        let filter = select
-            .filter
-            .map(|expr| Expression::from(expr, Some(table)))
-            .transpose()?
-            .unwrap_or(Expression::one());
-
-        let query_plan = QueryPlan::generate(table, &filter);
-
+        let ts = select.ts;
         Ok(SelectStatement::new(
             self,
             table.root_page_id,

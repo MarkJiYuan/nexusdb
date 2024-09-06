@@ -20,7 +20,7 @@ fn main() {
     let mut buf = String::new();
 
     loop {
-        print!("prsqlite> ");
+        print!("nexusdb> ");
         stdout.flush().expect("flush stdout");
         buf.truncate(0);
         let n = stdin.read_line(&mut buf).expect("read line");
