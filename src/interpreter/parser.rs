@@ -76,7 +76,7 @@ static NULL_BYTES: &[u8] = b"null";
 #[derive(Debug, Clone)]
 pub struct Parser<'a> {
     input: &'a [u8],
-     cursor: usize,
+    cursor: usize,
     token: Option<Token<'a>>,
     token_size: usize,
 }
@@ -408,8 +408,9 @@ pub fn parse_create_index<'a>(p: &mut Parser<'a>) -> Result<'a, CreateIndex<'a>>
 
 #[derive(Debug)]
 pub struct Select<'a> {
-    pub tag: MaybeQuotedBytes<'a>,
-    pub ts: Token<'a>,
+    pub table_name: MaybeQuotedBytes<'a>,
+    pub columns: Vec<ResultColumn<'a>>,
+    pub filter: Option<Expr<'a>>,
 }
 
 // Parse SELECT statement.
@@ -421,21 +422,39 @@ pub fn parse_select<'a>(p: &mut Parser<'a>) -> Result<'a, Select<'a>> {
     };
     p.next();
 
-    //parse timestamp
-    let binding = p.clone();
-    let ts = binding.peek().unwrap();
+    let result_column = parse_result_column(p)?;
 
-    //parse table_name
+    let mut columns = vec![result_column];
+    loop {
+        match p.peek() {
+            Some(Token::Comma) => {
+                p.next();
+                let result_column = parse_result_column(p)?;
+                columns.push(result_column);
+            }
+            Some(Token::From) => {
+                break;
+            }
+            _ => return Err(p.error("no from")),
+        }
+    }
     let Some(Token::Identifier(table_name)) = p.next() else {
         return Err(p.error("no table_name"));
     };
-    let tag = *table_name;
+    let table_name = *table_name;
 
-    println!("table_name: {:?}", table_name);
+    let filter = if let Some(Token::Where) = p.next() {
+        p.next();
+        let expr = parse_expr(p)?;
+        Some(expr)
+    } else {
+        None
+    };
 
     Ok(Select {
-        tag,
-        ts: *ts,
+        table_name,
+        columns,
+        filter,
     })
 }
 
@@ -446,10 +465,54 @@ pub enum ResultColumn<'a> {
     Expr((Expr<'a>, Option<MaybeQuotedBytes<'a>>)),
 }
 
+/// Parse result column.
+///
+/// https://www.sqlite.org/syntax/result-column.html
+fn parse_result_column<'a>(p: &mut Parser<'a>) -> Result<'a, ResultColumn<'a>> {
+    match p.peek() {
+        Some(Token::Identifier(table_name)) => {
+            let table_name = *table_name;
+            let mut cloned_parser = p.clone();
+            if Some(&Token::Dot) == cloned_parser.next()
+                && Some(&Token::Asterisk) == cloned_parser.next()
+            {
+                cloned_parser.next();
+                *p = cloned_parser;
+                return Ok(ResultColumn::AllOfTable(table_name));
+            }
+            // Maybe schema_name.table_name.column_name. Fallback to expr
+            // parsing.
+        }
+        Some(Token::Asterisk) => {
+            p.next();
+            return Ok(ResultColumn::All);
+        }
+        _ => {}
+    }
+    let expr = parse_expr(p)?;
+    match p.peek() {
+        Some(Token::Identifier(alias)) => {
+            let alias = *alias;
+            p.next();
+            Ok(ResultColumn::Expr((expr, Some(alias))))
+        }
+        Some(Token::As) => {
+            let Some(Token::Identifier(alias)) = p.next() else {
+                return Err(p.error("no alias"));
+            };
+            let alias = *alias;
+            p.next();
+            Ok(ResultColumn::Expr((expr, Some(alias))))
+        }
+        _ => Ok(ResultColumn::Expr((expr, None))),
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub struct Insert<'a> {
-    pub tag: MaybeQuotedBytes<'a>,
-    pub value: Token<'a>,
+    pub table_name: MaybeQuotedBytes<'a>,
+    pub columns: Vec<MaybeQuotedBytes<'a>>,
+    pub values: Vec<Vec<Expr<'a>>>,
 }
 
 // Parse INSERT statement.
@@ -467,11 +530,57 @@ pub fn parse_insert<'a>(p: &mut Parser<'a>) -> Result<'a, Insert<'a>> {
     };
     let table_name = *table_name;
 
-    let value = p.next().unwrap();
+    let Some(Token::LeftParen) = p.next() else {
+        return Err(p.error("no left paren"));
+    };
+    let mut columns = Vec::new();
+
+    loop {
+        let Some(Token::Identifier(column_name)) = p.next() else {
+            return Err(p.error("no column_name"));
+        };
+        columns.push(*column_name);
+        match p.next() {
+            Some(Token::Comma) => continue,
+            Some(Token::RightParen) => break,
+            _ => return Err(p.error("no right paren")),
+        }
+    }
+    let Some(Token::Values) = p.next() else {
+        return Err(p.error("no values"));
+    };
+
+    let mut values = Vec::new();
+    loop {
+        let Some(Token::LeftParen) = p.next() else {
+            return Err(p.error("no left paren"));
+        };
+        p.next();
+        let expr = parse_expr(p)?;
+        let mut column_values = vec![expr];
+        loop {
+            match p.peek() {
+                Some(Token::Comma) => {
+                    p.next();
+                    let expr = parse_expr(p)?;
+                    column_values.push(expr);
+                }
+                Some(Token::RightParen) => {
+                    break;
+                }
+                _ => return Err(p.error("no right paren")),
+            }
+        }
+        values.push(column_values);
+        let Some(Token::Comma) = p.next() else {
+            break;
+        };
+    }
 
     Ok(Insert {
-        tag: table_name,
-        value: *value,
+        table_name,
+        columns,
+        values,
     })
 }
 
@@ -1010,6 +1119,155 @@ mod tests {
         let r = parse_create_index(&mut Parser::new(b"create index foo on bar (id, name "));
         assert!(r.is_err());
         assert_eq!(r.unwrap_err().cursor(), 34);
+    }
+
+    #[test]
+    fn test_parse_select_all() {
+        let input = b"select * from foo";
+        let mut parser = Parser::new(input);
+        let select = parse_select(&mut parser).unwrap();
+        assert_eq!(parser.n_consumed(), input.len());
+        assert_eq!(select.table_name, b"foo".as_slice().into());
+        assert_eq!(select.columns, vec![ResultColumn::All]);
+    }
+
+    #[test]
+    fn test_parse_select_columns() {
+        let input = b"select id,name,*,col as col2, col3 col4, 10, 'text' as col5, col = 11, col2 < col3 as col6 from foo";
+        let mut parser = Parser::new(input);
+        let select = parse_select(&mut parser).unwrap();
+        assert_eq!(parser.n_consumed(), input.len());
+        assert_eq!(select.table_name, b"foo".as_slice().into());
+        assert_eq!(
+            select.columns,
+            vec![
+                ResultColumn::Expr((Expr::Column(b"id".as_slice().into()), None)),
+                ResultColumn::Expr((Expr::Column(b"name".as_slice().into()), None)),
+                ResultColumn::All,
+                ResultColumn::Expr((
+                    Expr::Column(b"col".as_slice().into()),
+                    Some(b"col2".as_slice().into())
+                )),
+                ResultColumn::Expr((
+                    Expr::Column(b"col3".as_slice().into()),
+                    Some(b"col4".as_slice().into())
+                )),
+                ResultColumn::Expr((Expr::Integer(10), None)),
+                ResultColumn::Expr((
+                    Expr::Text(b"'text'".as_slice().into()),
+                    Some(b"col5".as_slice().into())
+                )),
+                ResultColumn::Expr((
+                    Expr::BinaryOperator {
+                        operator: BinaryOp::Compare(CompareOp::Eq),
+                        left: Box::new(Expr::Column(b"col".as_slice().into())),
+                        right: Box::new(Expr::Integer(11)),
+                    },
+                    None
+                )),
+                ResultColumn::Expr((
+                    Expr::BinaryOperator {
+                        operator: BinaryOp::Compare(CompareOp::Lt),
+                        left: Box::new(Expr::Column(b"col2".as_slice().into())),
+                        right: Box::new(Expr::Column(b"col3".as_slice().into())),
+                    },
+                    Some(b"col6".as_slice().into())
+                ))
+            ]
+        );
+    }
+
+    #[test]
+    fn test_parse_select_table_all() {
+        let input = b"select bar.* from foo";
+        let mut parser = Parser::new(input);
+        let select = parse_select(&mut parser).unwrap();
+        assert_eq!(parser.n_consumed(), input.len());
+        assert_eq!(select.table_name, b"foo".as_slice().into());
+        assert_eq!(
+            select.columns,
+            vec![ResultColumn::AllOfTable(b"bar".as_slice().into()),]
+        );
+    }
+
+    #[test]
+    fn test_parse_select_where() {
+        let input = b"select * from foo where id = 5";
+        let mut parser = Parser::new(input);
+        let select = parse_select(&mut parser).unwrap();
+        assert_eq!(parser.n_consumed(), input.len());
+        assert_eq!(select.table_name, b"foo".as_slice().into());
+        assert_eq!(select.columns, vec![ResultColumn::All,]);
+        assert!(select.filter.is_some());
+        assert_eq!(
+            select.filter.unwrap(),
+            Expr::BinaryOperator {
+                operator: BinaryOp::Compare(CompareOp::Eq),
+                left: Box::new(Expr::Column(b"id".as_slice().into())),
+                right: Box::new(Expr::Integer(5)),
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_select_fail() {
+        // no expr after comma.
+        let r = parse_select(&mut Parser::new(b"select col, from foo"));
+        assert!(r.is_err());
+        assert_eq!(r.unwrap_err().cursor(), 12);
+        // no table name.
+        let r = parse_select(&mut Parser::new(b"select col from ;"));
+        assert!(r.is_err());
+        assert_eq!(r.unwrap_err().cursor(), 16);
+    }
+
+    #[test]
+    fn test_parse_insert() {
+        assert_parser!(
+            parse_insert,
+            b"insert into example (col) values (1)",
+            36,
+            Insert {
+                table_name: b"example".as_slice().into(),
+                columns: vec![b"col".as_slice().into()],
+                values: vec![vec![Expr::Integer(1)]],
+            }
+        );
+        assert_parser!(
+            parse_insert,
+            b"insert into example2 (col, col2) values (1, 2)a",
+            46,
+            Insert {
+                table_name: b"example2".as_slice().into(),
+                columns: vec![b"col".as_slice().into(), b"col2".as_slice().into()],
+                values: vec![vec![Expr::Integer(1), Expr::Integer(2)]],
+            }
+        );
+        assert_parser!(
+            parse_insert,
+            b"insert into example2 (col, col2) values (1, 2), (3, 4)a",
+            54,
+            Insert {
+                table_name: b"example2".as_slice().into(),
+                columns: vec![b"col".as_slice().into(), b"col2".as_slice().into()],
+                values: vec![
+                    vec![Expr::Integer(1), Expr::Integer(2)],
+                    vec![Expr::Integer(3), Expr::Integer(4)]
+                ],
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_insert_fail() {
+        // no expr right paren.
+        let r = parse_insert(&mut Parser::new(b"insert into example (col values (1)"));
+        assert!(r.is_err());
+        assert_eq!(r.unwrap_err().cursor(), 25);
+        // no table name.
+        let r = parse_insert(&mut Parser::new(b"insert into (col) values (1)"));
+        assert!(r.is_err());
+        assert_eq!(r.unwrap_err().cursor(), 12);
     }
 
     #[test]

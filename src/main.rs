@@ -20,7 +20,7 @@ fn main() {
     let mut buf = String::new();
 
     loop {
-        print!("nexusdb> ");
+        print!("prsqlite> ");
         stdout.flush().expect("flush stdout");
         buf.truncate(0);
         let n = stdin.read_line(&mut buf).expect("read line");
@@ -58,12 +58,15 @@ fn main() {
                                 }
                             }
                             println!();
+
+                            println!("-------nexusdb Querying-----");
                         }
                     }
                     Statement::Execution(stmt) => {
                         if let Err(e) = stmt.execute() {
                             eprintln!("{e}");
                         }
+                        println!("-------nexusdb Executing----- insert delete ");
                     }
                 }
             }

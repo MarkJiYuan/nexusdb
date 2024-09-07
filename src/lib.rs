@@ -5,10 +5,10 @@ pub mod interpreter;
 pub mod storage;
 pub mod utils;
 
-use crate::interpreter::query;
-use crate::interpreter::expression;
 use crate::interpreter::cursor;
+use crate::interpreter::expression;
 use crate::interpreter::parser;
+use crate::interpreter::query;
 
 use std::cell::Cell;
 use std::cell::RefCell;
@@ -53,8 +53,6 @@ use crate::interpreter::value::DEFAULT_COLLATION;
 use anyhow::bail;
 use anyhow::Context;
 
-// Original SQLite support both 32-bit or 64-bit rowid. prsqlite only support
-// 64-bit rowid.
 const MAX_ROWID: i64 = i64::MAX;
 
 #[derive(Debug)]
@@ -214,9 +212,41 @@ impl Connection {
     }
 
     fn prepare_select<'a>(&self, select: Select<'a>) -> Result<'a, SelectStatement> {
-        let tag = select.tag;
+        if self.schema.borrow().is_none() {
+            self.load_schema()?;
+        }
+        let schema_cell = self.schema.borrow();
+        let schema = schema_cell.as_ref().unwrap();
+        let table_name = select.table_name.dequote();
+        let table = schema.get_table(&table_name).ok_or(anyhow::anyhow!(
+            "table not found: {:?}",
+            std::str::from_utf8(&table_name).unwrap_or_default()
+        ))?;
 
-        let ts = select.ts;
+        let mut columns = Vec::new();
+        for column in select.columns {
+            match column {
+                ResultColumn::All => {
+                    columns.extend(table.get_all_columns().map(Expression::Column));
+                }
+                ResultColumn::Expr((expr, _alias)) => {
+                    // TODO: consider alias.
+                    columns.push(Expression::from(expr, Some(table))?);
+                }
+                ResultColumn::AllOfTable(_table_name) => {
+                    todo!("ResultColumn::AllOfTable");
+                }
+            }
+        }
+
+        let filter = select
+            .filter
+            .map(|expr| Expression::from(expr, Some(table)))
+            .transpose()?
+            .unwrap_or(Expression::one());
+
+        let query_plan = QueryPlan::generate(table, &filter);
+
         Ok(SelectStatement::new(
             self,
             table.root_page_id,
