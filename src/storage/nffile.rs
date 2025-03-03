@@ -73,7 +73,12 @@ impl NFFile {
         let value_size = mem::size_of::<T>();
 
         if position + value_size > self.data.len() {
-            println!("position: {}, value_size: {}, data.len(): {}", position, value_size, self.data.len());
+            println!(
+                "position: {}, value_size: {}, data.len(): {}",
+                position,
+                value_size,
+                self.data.len()
+            );
             println!("Out of bounds");
             None
         } else {
@@ -181,49 +186,65 @@ mod tests {
     use super::*;
 
     #[test]
-fn test_add_data_and_reload_i32() {
-    let file_path = "test_add_data.bin".to_string();
+    fn test_add_data_and_reload_i32() {
+        let file_path = "test_add_data.bin".to_string();
 
-    // 创建 NFFile 实例并添加 i32 数据
-    let mut nf_file = NFFile::new(0, 1000, 4, Some(get_absolute_path_for_data_file(&file_path)));
-    let value: i32 = 12345;
-    nf_file.add_data(1000, &value);
-    nf_file.add_data(2000, &54321);
-    nf_file.add_data(2500, &67890);
+        // 创建 NFFile 实例并添加 i32 数据
+        let mut nf_file = NFFile::new(
+            0,
+            1000,
+            4,
+            Some(get_absolute_path_for_data_file(&file_path)),
+        );
+        let value: i32 = 12345;
+        nf_file.add_data(1000, &value);
+        nf_file.add_data(2000, &54321);
+        nf_file.add_data(2500, &67890);
 
+        // 查询并验证添加的数据
+        let result = nf_file.query_data::<i32>(1000);
+        assert!(result.is_some());
+        assert_eq!(*result.unwrap(), 12345);
 
-    // 查询并验证添加的数据
-    let result = nf_file.query_data::<i32>(1000);
-    assert!(result.is_some());
-    assert_eq!(*result.unwrap(), 12345);
+        // 将数据刷新到文件
+        let _ = flush_nffile(&mut nf_file);
 
-    // 将数据刷新到文件
-    let _ = flush_nffile(&mut nf_file);
+        // 创建一个新的 NFFile 实例，并从文件中加载数据
+        let mut loaded_nf_file = NFFile::new(
+            0,
+            1000,
+            4,
+            Some(get_absolute_path_for_data_file(&file_path)),
+        );
+        let _ = load_nffile(&mut loaded_nf_file).expect("Failed to load data from file");
 
-    // 创建一个新的 NFFile 实例，并从文件中加载数据
-    let mut loaded_nf_file =
-        NFFile::new(0, 1000, 4, Some(get_absolute_path_for_data_file(&file_path)));
-    let _ = load_nffile(&mut loaded_nf_file).expect("Failed to load data from file");
+        // 重新查询并验证加载的数据
+        let loaded_result = loaded_nf_file.query_data::<i32>(1000);
+        assert!(loaded_result.is_some());
+        assert_eq!(*loaded_result.unwrap(), 12345);
 
-    // 重新查询并验证加载的数据
-    let loaded_result = loaded_nf_file.query_data::<i32>(1000);
-    assert!(loaded_result.is_some());
-    assert_eq!(*loaded_result.unwrap(), 12345);
+        let mut loaded_nf_file = NFFile::new(
+            0,
+            1000,
+            4,
+            Some(get_absolute_path_for_data_file(&file_path)),
+        );
 
-    let mut loaded_nf_file =
-        NFFile::new(0, 1000, 4, Some(get_absolute_path_for_data_file(&file_path)));
-    
-
-    // 清理测试文件
-    // std::fs::remove_file(&file_path).expect("Failed to remove test file");
-}
+        // 清理测试文件
+        // std::fs::remove_file(&file_path).expect("Failed to remove test file");
+    }
 
     #[test]
     fn test_range_write_read_and_reload_i32() {
         let file_path = "test_data.bin".to_string();
 
         // 创建 NFFile 实例并写入一组 i32 数据
-        let mut nf_file = NFFile::new(0, 1000, 4, Some(get_absolute_path_for_data_file(&file_path)));
+        let mut nf_file = NFFile::new(
+            0,
+            1000,
+            4,
+            Some(get_absolute_path_for_data_file(&file_path)),
+        );
         let values: [i32; 8] = [10, 20, 30, 40, 50, 50, 60, 60];
         nf_file.range_write(1000, &values);
 
@@ -238,8 +259,12 @@ fn test_add_data_and_reload_i32() {
         let _ = flush_nffile(&mut nf_file);
 
         // 创建一个新的 NFFile 实例，并从文件中加载数据
-        let mut loaded_nf_file =
-            NFFile::new(0, 1000, 4, Some(get_absolute_path_for_data_file(&file_path)));
+        let mut loaded_nf_file = NFFile::new(
+            0,
+            1000,
+            4,
+            Some(get_absolute_path_for_data_file(&file_path)),
+        );
         let _ = load_nffile(&mut loaded_nf_file).expect("Failed to load data from file");
 
         // 重新读取并验证加载的数据
